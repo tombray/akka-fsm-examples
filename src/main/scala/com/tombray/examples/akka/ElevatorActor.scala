@@ -2,6 +2,7 @@ package com.tombray.examples.akka
 
 import akka.actor.{ActorLogging, FSM, Actor}
 import com.tombray.examples.akka.ElevatorActor.{Data, State}
+import com.tombray.examples.akka.ElevatorProtocol.Request
 import scala.concurrent.duration._
 /**
  * Created by tbray on 7/24/14.
@@ -10,74 +11,61 @@ class ElevatorActor extends Actor with ActorLogging with FSM[State,Data]{
   import ElevatorActor._
   import ElevatorProtocol._
 
-  var requests:Set[Request] = Set.empty[Request]
-
-  startWith(Idle, Data(NoDirection,0))
+  startWith(Idle, Data(NoDirection, 0, Set.empty[Request]))
 
   when(Idle) {
-    case Event(r:Request,Data(_,currentFloor)) if r.floor == currentFloor => goto(Open)
-    case Event(req:Request,Data(_,currentFloor)) if req.floor < currentFloor => goto(GoingDown) using downData(req) //TODO include requests in Data()
-    case Event(r:Request,Data(_,currentFloor)) if r.floor > currentFloor => { addToRequests(r); goto(GoingUp) using Data(Up, currentFloor) }
+    case Event(req:Request,Data(_,currentFloor, _)) if req.floor == currentFloor => goto(Open)
+    case Event(req:Request,Data(_,currentFloor, requests)) if req.floor < currentFloor => goto(GoingDown) using Data(Down, currentFloor, requests + req)
+    case Event(req:Request,Data(_,currentFloor, requests)) if req.floor > currentFloor => goto(GoingUp) using Data(Up, currentFloor, requests + req)
   }
 
-  when(GoingUp) (going(sameDirection = Up, oppositeDirection = Down, hasRequestsForHigherFloors))
-  when(GoingDown) (going(sameDirection = Down, oppositeDirection = Up, hasRequestsForLowerFloors))
-
-  //whether we're GoingUp or GoingDown, the logic to handle incoming events is very similar; this function allows us to stay DRY
-  def going(sameDirection:Direction, oppositeDirection:Direction, moreRequestsFn:Int => Boolean):StateFunction = {
-    case Event(request:Request, _) => addToRequests(request); stay
-    case Event(ArrivedAtFloor(floor),d) if requests.contains(GetOff(floor)) => goto(Open) using d.copy(currentFloor = floor)
-    case Event(ArrivedAtFloor(floor),d) if requests.contains(GetOn(floor,sameDirection)) => goto(Open) using d.copy(currentFloor = floor)
-    case Event(ArrivedAtFloor(floor),_) if (!moreRequestsFn(floor) && requests.contains(GetOn(floor,oppositeDirection))) => goto(Open) using Data(oppositeDirection,floor)
-  }
+  when(GoingUp) (going(Up))
+  when(GoingDown) (going(Down))
 
   when(Open, 3 seconds) {
-    case Event(request:Request, Data(NoDirection,currentFloor)) if request.floor < currentFloor => stayAndChangeDirectionToDown(request)
-    case Event(request:Request, Data(NoDirection,currentFloor)) if request.floor > currentFloor => stayAndChangeDirectionToUp(request)
-    case Event(request:Request, Data(_,currentFloor)) => requests = requests + request; stay //don't change direction
+    case Event(request:Request, Data(NoDirection,currentFloor,requests)) if request.floor < currentFloor => stay using Data(Down, currentFloor, requests + request)
+    case Event(request:Request, Data(NoDirection,currentFloor,requests)) if request.floor > currentFloor => stay using Data(Up, currentFloor, requests + request)
+    case Event(request:Request, d@Data(_,currentFloor,requests)) => stay using d.copy(requests = requests + request) //don't change direction
     case Event(StateTimeout,d) => {
 
-      if (d.direction == Down && hasRequestsForLowerFloors(d.currentFloor)) goto(GoingDown)
-      else if (d.direction == Up && hasRequestsForHigherFloors(d.currentFloor)) goto(GoingUp)
+      if (d.direction == Down && hasRequestsForLowerFloors(d.currentFloor, d.requests)) goto(GoingDown)
+      else if (d.direction == Up && hasRequestsForHigherFloors(d.currentFloor, d.requests)) goto(GoingUp)
       else {
-        if (hasRequestsForHigherFloors(d.currentFloor)) goto(GoingUp) using Data(Up, d.currentFloor)
-        else if (hasRequestsForLowerFloors(d.currentFloor)) goto(GoingDown) using Data(Down, d.currentFloor)
+        if (hasRequestsForHigherFloors(d.currentFloor,d.requests)) goto(GoingUp) using d.copy(direction = Up)
+        else if (hasRequestsForLowerFloors(d.currentFloor, d.requests)) goto(GoingDown) using d.copy(direction = Down)
         else stay() //TODO should goto(Idle), write a test first
       }
     }
   }
 
+  //whether we're GoingUp or GoingDown, the logic to handle incoming events is very similar; this function allows us to stay DRY
+  def going(sameDirection:Direction):StateFunction = {
+    val oppositeDirection = if (sameDirection == Up) Down else Up
+    def moreRequestsInSameDirectionFn(floor:Int, direction:Direction, requests:Set[Request]) = if (direction == Up) hasRequestsForHigherFloors(floor, requests) else hasRequestsForLowerFloors(floor, requests)
+    def needToSwitchDirections( direction:Direction, floor:Int, requests:Set[Request]) = !moreRequestsInSameDirectionFn(floor,direction,requests) && requests.contains(GetOn(floor,oppositeDirection))
+    def removeAllRequestsForFloor(floor:Int, requests:Set[Request]) = requests.filter(_.floor != floor)
+    def hasRequestForFloor(floor:Int, requests:Set[Request], direction:Direction): Boolean = requests.contains(GetOff(floor)) || requests.contains(GetOn(floor, direction))
+
+    return {
+      case Event(request:Request, d) => stay using Data(sameDirection, d.currentFloor, d.requests + request)
+      case Event(ArrivedAtFloor(floor), d) if hasRequestForFloor(floor,d.requests,sameDirection) => goto(Open) using Data(sameDirection, floor, removeAllRequestsForFloor(floor, d.requests))
+      case Event(ArrivedAtFloor(floor), d) if needToSwitchDirections(d.direction, floor, d.requests) => goto(Open) using Data(oppositeDirection, floor, removeAllRequestsForFloor(floor, d.requests))
+    }
+  }
+
   whenUnhandled {
     case Event(ArrivedAtFloor(floor),_) => stay using stateData.copy(currentFloor = floor)
-    case Event(GetCurrentFloor, Data(_,currentFloor)) => sender ! currentFloor; stay()
-    case Event(GetRequests,_) => sender ! requests; stay()
+    case Event(GetCurrentFloor, Data(_,currentFloor,_)) => sender ! currentFloor; stay()
+    case Event(GetRequests,d) => sender ! d.requests; stay()
   }
 
   onTransition {
-    case _ -> Open => removeAllRequestsForFloor(nextStateData.currentFloor); log.info("opening doors. {}", nextStateData)
+    case _ -> Open => log.info("opening doors. {}", nextStateData)
     case Open -> _ => log.info("closing doors. {}", nextStateData)
   }
 
-  onTransition {
-    case a -> b => log.info("transitioning from {} to {}, requests: {}", a, b, requests)
-  }
-
-  def stayAndChangeDirectionToDown(request: Request) = {
-    requests = requests + request; stay using stateData.copy(direction = Down)
-  }
-
-  def stayAndChangeDirectionToUp(request: Request) = {
-    requests = requests + request; stay using stateData.copy(direction = Up)
-  }
-
-  def downData(request:Request) = {
-    addToRequests(request)
-    stateData.copy(direction = Down)
-  }
-  def addToRequests(request:Request) = requests = requests + request
-  def hasRequestsForLowerFloors(floor:Int) = { requests.exists( _.floor < floor)}
-  def hasRequestsForHigherFloors(floor:Int) = { requests.exists( _.floor > floor)}
-  def removeAllRequestsForFloor(floor:Int) = requests = requests.filter(_.floor != floor) //TODO do this without side effects, return the result of the filter, pass in the requests object
+  def hasRequestsForLowerFloors(floor:Int, requests:Set[Request]) = { requests.exists( _.floor < floor)}
+  def hasRequestsForHigherFloors(floor:Int, requests:Set[Request]) = { requests.exists( _.floor > floor)}
 }
 
 object ElevatorActor {
@@ -92,15 +80,13 @@ object ElevatorActor {
   case object GoingDown extends State
   case object GoingUp extends State
 
-  case class Data(direction:Direction, currentFloor:Int)
+  case class Data(direction:Direction, currentFloor:Int, requests:Set[Request])
 }
 
 object ElevatorProtocol {
   import ElevatorActor._
 
-  sealed trait Request {
-    val floor:Int
-  }
+  sealed trait Request { val floor:Int }
   case class GetOn(floor:Int, direction:Direction) extends Request
   case class GetOff(floor:Int) extends Request
 
