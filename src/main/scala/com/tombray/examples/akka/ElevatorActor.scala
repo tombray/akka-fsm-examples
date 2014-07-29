@@ -14,9 +14,9 @@ class ElevatorActor extends Actor with ActorLogging with FSM[State,Data]{
   startWith(Idle, Data(NoDirection, 0, Set.empty[Request]))
 
   when(Idle) {
-    case Event(req:Request,Data(_,currentFloor, _)) if req.floor == currentFloor => goto(Open)
-    case Event(req:Request,Data(_,currentFloor, requests)) if req.floor < currentFloor => goto(GoingDown) using Data(Down, currentFloor, requests + req)
-    case Event(req:Request,Data(_,currentFloor, requests)) if req.floor > currentFloor => goto(GoingUp) using Data(Up, currentFloor, requests + req)
+    case Event(req:Request, Data(_,currentFloor, _)) if req.floor == currentFloor => goto(Open)
+    case Event(req:Request, Data(_,currentFloor, requests)) if req.floor < currentFloor => goto(GoingDown) using Data(Down, currentFloor, requests + req)
+    case Event(req:Request, Data(_,currentFloor, requests)) if req.floor > currentFloor => goto(GoingUp) using Data(Up, currentFloor, requests + req)
   }
 
   when(GoingUp) (going(Up))

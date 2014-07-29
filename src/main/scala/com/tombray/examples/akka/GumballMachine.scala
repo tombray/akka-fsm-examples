@@ -1,6 +1,6 @@
-package com.tombray
+package com.tombray.examples.akka
 
-import akka.actor.{FSM, Actor}
+import akka.actor.{Actor, FSM}
 
 /**
  * Created by tbray on 6/23/14.
@@ -21,8 +21,8 @@ object GumballMachine {
 }
 
 class GumballMachine extends Actor with FSM[GumballMachine.State, Int] {
+  import GumballMachineProtocol._
   import GumballMachine._
-  import com.tombray.GumballMachineProtocol._
 
   startWith(NoQuarterState, 5)
 

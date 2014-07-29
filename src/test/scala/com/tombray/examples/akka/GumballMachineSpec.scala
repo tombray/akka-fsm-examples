@@ -5,9 +5,8 @@ import akka.actor.{ActorSystem, Props}
 import akka.pattern.ask
 import akka.testkit.{ImplicitSender, TestKit}
 import akka.util.Timeout
-import com.tombray.GumballMachine
-import com.tombray.GumballMachine.{HasQuarterState, NoQuarterState, SoldState}
-import com.tombray.GumballMachineProtocol._
+import GumballMachine.{HasQuarterState, NoQuarterState, SoldState}
+import GumballMachineProtocol._
 import org.scalatest._
 
 import scala.concurrent.Await
@@ -22,7 +21,7 @@ class GumballMachineSpec extends TestKit(ActorSystem("test-system"))
 
   "A gumball machine in NoQuarterState" must {
     "transition to HasQuarterState" in {
-      val gumballMachine = system.actorOf(Props[GumballMachine], "gm1")
+      val gumballMachine = system.actorOf(Props[GumballMachine])
 
       gumballMachine ! InsertQuarter
       gumballMachine ! SubscribeTransitionCallBack(testActor)
@@ -36,7 +35,7 @@ class GumballMachineSpec extends TestKit(ActorSystem("test-system"))
 
   "A gumball machine in HasQuarterState" must {
     "return to NoQuarterState if customer ejects quarter" in {
-      val gumballMachine = system.actorOf(Props[GumballMachine], "gm2")
+      val gumballMachine = system.actorOf(Props[GumballMachine])
 
       gumballMachine ! InsertQuarter
       gumballMachine ! EjectQuarter
@@ -51,7 +50,7 @@ class GumballMachineSpec extends TestKit(ActorSystem("test-system"))
 
   "A gumball machine in HasQuarterState" must {
     "transition to SoldState" in {
-      val gumballMachine = system.actorOf(Props[GumballMachine], "gm3")
+      val gumballMachine = system.actorOf(Props[GumballMachine])
 
       gumballMachine ! InsertQuarter
       gumballMachine ! TurnCrank
@@ -68,7 +67,7 @@ class GumballMachineSpec extends TestKit(ActorSystem("test-system"))
     "have some gumballs" in {
       implicit val timeout = Timeout(5 seconds)
 
-      val gumballMachine = system.actorOf(Props[GumballMachine], "gm4")
+      val gumballMachine = system.actorOf(Props[GumballMachine])
 
       val futureCount = ask(gumballMachine, GumballCount).mapTo[Int]
 
