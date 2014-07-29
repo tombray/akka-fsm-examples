@@ -14,9 +14,15 @@ class ElevatorActor extends Actor with ActorLogging with FSM[State,Data]{
   startWith(Idle, Data(NoDirection, 0, Set.empty[Request]))
 
   when(Idle) {
-    case Event(req:Request, Data(_,currentFloor, _)) if req.floor == currentFloor => goto(Open)
-    case Event(req:Request, Data(_,currentFloor, requests)) if req.floor < currentFloor => goto(GoingDown) using Data(Down, currentFloor, requests + req)
-    case Event(req:Request, Data(_,currentFloor, requests)) if req.floor > currentFloor => goto(GoingUp) using Data(Up, currentFloor, requests + req)
+    case Event(req:Request, Data(_,currentFloor, _)) if req.floor == currentFloor => {
+      goto(Open)
+    }
+    case Event(req:Request, Data(_,currentFloor, requests)) if req.floor < currentFloor => {
+      goto(GoingDown) using Data(Down, currentFloor, requests + req)
+    }
+    case Event(req:Request, Data(_,currentFloor, requests)) if req.floor > currentFloor => {
+      goto(GoingUp) using Data(Up, currentFloor, requests + req)
+    }
   }
 
   when(GoingUp) (going(Up))
@@ -34,7 +40,9 @@ class ElevatorActor extends Actor with ActorLogging with FSM[State,Data]{
       !moreRequestsInSameDirectionFn(floor,direction,requests) && requests.contains(GetOn(floor,oppositeDirection))
     }
     def removeAllRequestsForFloor(floor:Int, requests:Set[Request]) = requests.filter(_.floor != floor)
-    def hasRequestForFloor(floor:Int, requests:Set[Request], direction:Direction): Boolean = requests.contains(GetOff(floor)) || requests.contains(GetOn(floor, direction))
+    def hasRequestForFloor(floor:Int, requests:Set[Request], direction:Direction): Boolean = {
+      requests.contains(GetOff(floor)) || requests.contains(GetOn(floor, direction))
+    }
 
     //here I return the actual StateFunction which closes over the convenience functions above
     return {
@@ -49,11 +57,18 @@ class ElevatorActor extends Actor with ActorLogging with FSM[State,Data]{
   }
 
   when(Open, 3 seconds) {
-    case Event(request:Request, Data(NoDirection,currentFloor,requests)) if request.floor < currentFloor => stay using Data(Down, currentFloor, requests + request)
-    case Event(request:Request, Data(NoDirection,currentFloor,requests)) if request.floor > currentFloor => stay using Data(Up, currentFloor, requests + request)
-    case Event(request:Request, d@Data(_,currentFloor,requests)) => stay using d.copy(requests = requests + request) //don't change direction
+    //no direction, floor is lower, go down
+    case Event(request:Request, Data(NoDirection,currentFloor,requests)) if request.floor < currentFloor => {
+      stay using Data(Down, currentFloor, requests + request)
+    }
+    //no direction, floor is higher, go up
+    case Event(request:Request, Data(NoDirection,currentFloor,requests)) if request.floor > currentFloor => {
+      stay using Data(Up, currentFloor, requests + request)
+    }
+    //has a direction, so don't change it
+    case Event(request:Request, d@Data(_,currentFloor,requests)) => stay using d.copy(requests = requests + request)
+    //time to close the doors and transition to another state
     case Event(StateTimeout,d) => {
-
       if (d.direction == Down && hasRequestsForLowerFloors(d.currentFloor, d.requests)) goto(GoingDown)
       else if (d.direction == Up && hasRequestsForHigherFloors(d.currentFloor, d.requests)) goto(GoingUp)
       else {
