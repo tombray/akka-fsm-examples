@@ -9,4 +9,4 @@ Please start by taking a look at the elevator itself: [ElevatorActor.scala](http
 
 And then walk through the tests that I wrote as I fleshed out the behavior: [ElevatorActorSpec.scala](https://github.com/tombray/akka-fsm-examples/blob/master/src/test/scala/com/tombray/examples/akka/ElevatorActorSpec.scala)
 
-Soon, I'll add an ElevatorDispatcherActor to manage multiple elevators in a single building and determine the best elevator to service incoming requests to get on.
+Soon, I'll add an ElevatorDispatcherActor to manage multiple elevators in the same building and determine the best elevator to service incoming requests.
