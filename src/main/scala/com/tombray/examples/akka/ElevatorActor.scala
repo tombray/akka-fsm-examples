@@ -25,11 +25,14 @@ class ElevatorActor extends Actor with ActorLogging with FSM[State,Data]{
   //whether we're GoingUp or GoingDown, the logic to handle incoming events is very similar
   def going(sameDirection:Direction):StateFunction = {
     val oppositeDirection = if (sameDirection == Up) Down else Up
+    
+    //convenience functions
     def moreRequestsInSameDirectionFn(floor:Int, direction:Direction, requests:Set[Request]) = if (direction == Up) hasRequestsForHigherFloors(floor, requests) else hasRequestsForLowerFloors(floor, requests)
     def needToSwitchDirections( direction:Direction, floor:Int, requests:Set[Request]) = !moreRequestsInSameDirectionFn(floor,direction,requests) && requests.contains(GetOn(floor,oppositeDirection))
     def removeAllRequestsForFloor(floor:Int, requests:Set[Request]) = requests.filter(_.floor != floor)
     def hasRequestForFloor(floor:Int, requests:Set[Request], direction:Direction): Boolean = requests.contains(GetOff(floor)) || requests.contains(GetOn(floor, direction))
 
+    //here I return the actual StateFunction which closes over the convenience functions above
     return {
       case Event(request:Request, d) => stay using Data(sameDirection, d.currentFloor, d.requests + request)
       case Event(ArrivedAtFloor(floor), d) if hasRequestForFloor(floor,d.requests,sameDirection) => goto(Open) using Data(sameDirection, floor, removeAllRequestsForFloor(floor, d.requests))
