@@ -22,7 +22,7 @@ class ElevatorActor extends Actor with ActorLogging with FSM[State,Data]{
   when(GoingUp) (going(Up))
   when(GoingDown) (going(Down))
 
-  //whether we're GoingUp or GoingDown, the logic to handle incoming events is very similar; this function allows us to stay DRY
+  //whether we're GoingUp or GoingDown, the logic to handle incoming events is very similar
   def going(sameDirection:Direction):StateFunction = {
     val oppositeDirection = if (sameDirection == Up) Down else Up
     def moreRequestsInSameDirectionFn(floor:Int, direction:Direction, requests:Set[Request]) = if (direction == Up) hasRequestsForHigherFloors(floor, requests) else hasRequestsForLowerFloors(floor, requests)
