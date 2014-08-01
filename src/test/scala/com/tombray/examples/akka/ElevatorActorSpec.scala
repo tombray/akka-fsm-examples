@@ -18,7 +18,7 @@ with StopSystemAfterAll
 with ImplicitSender {
 
   describe("An elevator") {
-
+    //TODO refactor using TestFSMRef throughout
     it("should allow setting and getting the current floor manually") {
       val elevator = TestActorRef(Props(new ElevatorActor))
       elevator ! ArrivedAtFloor(10)
